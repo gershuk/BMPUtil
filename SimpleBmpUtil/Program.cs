@@ -2,15 +2,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.CommandLine;
+using System.CommandLine.Invocation;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Runtime.Serialization;
 
-(var bmp, _, _, _) = BitmapFactory.ReadBmpFromFile(@"C:\Users\vladi\Desktop\Test.bmp");
-bmp.VerticalInvers();
-bmp.InversColors();
-bmp.InversColors();
-BitmapFactory.WriteBmp(@"C:\Users\vladi\Desktop\Test2.bmp", bmp);
+Interpreter.DefaultInterpreter.Run();
 
 #region PixelStructs
 
@@ -48,9 +47,10 @@ public struct Pixel16
 
     public byte GetColorComponent(ComponentId id, SchemeType type) => (byte)((_data & masks[(int)type, (int)id]) >> offsets[(int)type, (int)id]);
 
-    public void SetColorComponent(byte value, ComponentId id, SchemeType type) =>
-        _data = (ushort)((_data & masks[(int)type, 0] + masks[(int)type, 1] + masks[(int)type, 2] - masks[(int)type, (int)id])
-        + (value << offsets[(int)type, (int)id]) & masks[(int)type, (int)id]);
+    public ushort SetColorComponent(byte value, ComponentId id, SchemeType type) => (type is SchemeType.FiveFiveFive || id is ComponentId.B or ComponentId.R) && value < 32 ||
+        type is SchemeType.FiveSixFive && id is ComponentId.R && value < 64 ?
+        _data = (ushort)((_data & masks[(int)type, 0] + masks[(int)type, 1] + masks[(int)type, 2] - masks[(int)type, (int)id]) +
+        (value << offsets[(int)type, (int)id]) & masks[(int)type, (int)id]) : throw new ColorValueOutOfRangeException();
 
     public void Invers(SchemeType type)
     {
@@ -160,6 +160,25 @@ public struct Pixel32 : IPixel
     public void Invers() => _pixel24.Invers();
 }
 
+public class ColorValueOutOfRangeException : Exception
+{
+    protected ColorValueOutOfRangeException(SerializationInfo info, StreamingContext context) : base(info, context)
+    {
+    }
+
+    public ColorValueOutOfRangeException()
+    {
+    }
+
+    public ColorValueOutOfRangeException(string? message) : base(message)
+    {
+    }
+
+    public ColorValueOutOfRangeException(string? message, Exception? innerException) : base(message, innerException)
+    {
+    }
+}
+
 #endregion PixelStructs
 
 #region BitmapTypes
@@ -172,7 +191,7 @@ public interface IBitmap
     public IReadOnlyList<Pixel32> Palette { get; }
     public int Width { get; }
 
-    public void HorizontalInvers();
+    public void HorizontalMirror();
 
     public void InversColors();
 
@@ -184,7 +203,7 @@ public interface IBitmap
 
     public void RotateRight90();
 
-    public void VerticalInvers();
+    public void VerticalMirror();
 }
 
 public interface IBitmapWithoutPalette : IBitmap
@@ -295,7 +314,7 @@ public sealed class BitmapWithoutPalette<TPixel> : IBitmapWithoutPalette where T
 
     private void SwapDimensions() => (Width, Height, XPixelsPerMeter, YPixelsPerMeter) = (Height, Width, YPixelsPerMeter, XPixelsPerMeter);
 
-    public unsafe void HorizontalInvers()
+    public unsafe void HorizontalMirror()
     {
         for (var h = 0; h < Height; ++h)
         {
@@ -357,7 +376,7 @@ public sealed class BitmapWithoutPalette<TPixel> : IBitmapWithoutPalette where T
         SwapDimensions();
     }
 
-    public unsafe void VerticalInvers()
+    public unsafe void VerticalMirror()
     {
         var oldHandle = GCHandle.Alloc(_pixels, GCHandleType.Pinned);
         var oldPixelsPtr = oldHandle.AddrOfPinnedObject().ToPointer();
@@ -378,6 +397,25 @@ public sealed class BitmapWithoutPalette<TPixel> : IBitmapWithoutPalette where T
         newHandle.Free();
 
         _pixels = newPixels;
+    }
+}
+
+public class WrongBmpFormatException : Exception
+{
+    protected WrongBmpFormatException(SerializationInfo info, StreamingContext context) : base(info, context)
+    {
+    }
+
+    public WrongBmpFormatException()
+    {
+    }
+
+    public WrongBmpFormatException(string? message) : base(message)
+    {
+    }
+
+    public WrongBmpFormatException(string? message, Exception? innerException) : base(message, innerException)
+    {
     }
 }
 
@@ -515,6 +553,30 @@ public readonly struct InfoHeader
 
 public static class BitmapFactory
 {
+    public static IBitmap CreateBitmap(ushort bitPerPixel,
+                                       uint colorsUsed,
+                                       int width,
+                                       int height,
+                                       int xPixelsPerMeter,
+                                       int yPixelsPerMeter,
+                                       Pixel32[]? palette = null,
+                                       byte[]? data = null) =>
+    bitPerPixel switch
+    {
+        8 => throw new NotImplementedException(),
+        16 or 24 or 32 =>
+        (IBitmap)(Activator.CreateInstance(typeof(BitmapWithoutPalette<>).MakeGenericType(
+        bitPerPixel switch
+        {
+            16 when colorsUsed is 32768 => typeof(Pixel16FiveFiveFive),
+            16 when colorsUsed is 65536 => typeof(Pixel16FiveSixFive),
+            24 => typeof(Pixel24),
+            32 => typeof(Pixel32),
+            _ => throw new NotImplementedException(),
+        }), data ?? new byte[width * height * bitPerPixel / 8], width, height, palette ?? Array.Empty<Pixel32>(), xPixelsPerMeter, yPixelsPerMeter) ?? throw new Exception()),
+        _ => throw new NotImplementedException(),
+    };
+
     public static unsafe (IBitmap bitmap, FileHeader fileHeader, InfoHeader infoHeader, Pixel32[] palette) ReadBmpFromFile(string path)
     {
         FileHeader fileHeader;
@@ -541,33 +603,9 @@ public static class BitmapFactory
         data = new byte[fileHeader.FileSize - fileHeader.OffsetData];
         fs.Read(data);
 
-        Activator.CreateInstance(typeof(BitmapWithoutPalette<>).MakeGenericType(
-           infoHeader.BitPerPixelCount switch
-           {
-               16 when infoHeader.ColorsUsed is 32768 => typeof(Pixel16FiveFiveFive),
-               16 when infoHeader.ColorsUsed is 65536 => typeof(Pixel16FiveSixFive),
-               24 => typeof(Pixel24),
-               32 => typeof(Pixel32),
-               _ => throw new NotImplementedException(),
-           }), data, infoHeader.ImageWidth, infoHeader.ImageHeight, palette, infoHeader.XPixelsPerMeter, infoHeader.YPixelsPerMeter);
-
         return
         (
-            infoHeader.BitPerPixelCount switch
-            {
-                8 => throw new NotImplementedException(),
-                16 or 24 or 32 =>
-                (IBitmap)(Activator.CreateInstance(typeof(BitmapWithoutPalette<>).MakeGenericType(
-                infoHeader.BitPerPixelCount switch
-                {
-                    16 when infoHeader.ColorsUsed is 32768 => typeof(Pixel16FiveFiveFive),
-                    16 when infoHeader.ColorsUsed is 65536 => typeof(Pixel16FiveSixFive),
-                    24 => typeof(Pixel24),
-                    32 => typeof(Pixel32),
-                    _ => throw new NotImplementedException(),
-                }), data, infoHeader.ImageWidth, infoHeader.ImageHeight, palette, infoHeader.XPixelsPerMeter, infoHeader.YPixelsPerMeter) ?? throw new Exception()),
-                _ => throw new NotImplementedException(),
-            },
+            CreateBitmap(infoHeader.BitPerPixelCount, infoHeader.ColorsUsed, infoHeader.ImageWidth, infoHeader.ImageHeight, infoHeader.XPixelsPerMeter, infoHeader.YPixelsPerMeter, palette, data),
             fileHeader,
             infoHeader,
             palette
@@ -599,139 +637,381 @@ public static class BitmapFactory
 
 #region Interpreter
 
-public interface ICommand
+public static class CommandFactory
 {
-    public void Execute();
-
-    public void TryParse(Dictionary<string, string> args)
+    private enum AxisMirror
     {
-        var fieldInfos = GetType().GetFields();
+        Vertical = 0,
+        Horizontal = 1,
+    }
 
-        foreach (var fieldInfo in fieldInfos)
+    private enum RotationDirection
+    {
+        Left90 = 0,
+        Right90 = 1,
+        Rotate180 = 2,
+    }
+
+    public static unsafe RootCommand MakeCreateBmpCommand(Dictionary<string, IBitmap> bitmaps)
+    {
+        var rootCommand = new RootCommand("Create bmp in pool")
         {
-            var value = args[(fieldInfo.GetCustomAttributes(typeof(CommandParamNameAttribute), true)[0] as CommandParamNameAttribute).Name];
-            fieldInfo.SetValue(this, Convert.ChangeType(value, fieldInfo.FieldType));
-        }
+            new Option<string>(new[] { "-n","--bmp-name"}, "Name in image pool") { IsRequired = true},
+            new Option<ushort>(new[] { "-b","--bits-per-pixel"}, "Bits per pixel in data array") { IsRequired = true},
+            new Option<uint>(new[] { "-c","--colors-used"}, "Color used in bmp"),
+            new Option<int>(new[] { "-w","--width"}, "Width") { IsRequired = true},
+            new Option<int>(new[] { "-h","--height"}, "Height") { IsRequired = true},
+            new Option<int>(new[] { "-xP","--x-pixels-per-meter"}, "Horizontal pixels per meter"),
+            new Option<int>(new[] { "-yP","--y-pixels-per-meter"}, "Vertical pixels per meter"),
+            new Option<uint[]>(new[] { "-p","--palette"}, "Palette"),
+        };
+
+        rootCommand.Handler = CommandHandler.Create<string, ushort, uint, int, int, int, int, uint[]>((bmpName, bitsPerPixel, colorsUsed, width, height, xPixelsPerMeter, yPixelsPerMeter, palette) =>
+        {
+            try
+            {
+                if (bitsPerPixel is 16 && colorsUsed is 0)
+                    colorsUsed = 32768;
+
+                if (colorsUsed is not (0 or 32768 or 65536))
+                {
+                    throw new WrongBmpFormatException();
+                }
+
+                var convertedPalette = new Pixel32[palette?.Length ?? 0];
+                if (palette != null && palette.Length > 0)
+                {
+                    var paletteHandle = GCHandle.Alloc(palette, GCHandleType.Pinned);
+                    var palettePtr = paletteHandle.AddrOfPinnedObject().ToPointer();
+                    var convertedPaletteHandle = GCHandle.Alloc(convertedPalette, GCHandleType.Pinned);
+                    var convertedPalettePtr = convertedPaletteHandle.AddrOfPinnedObject().ToPointer();
+                    Buffer.MemoryCopy(palettePtr, convertedPalettePtr, Buffer.ByteLength(palette), Buffer.ByteLength(palette));
+                }
+
+                bitmaps.Add(bmpName, BitmapFactory.CreateBitmap(bitsPerPixel, colorsUsed, width, height, xPixelsPerMeter, yPixelsPerMeter, convertedPalette));
+            }
+            catch (ArgumentException)
+            {
+                Console.WriteLine("KeyAlreadyExistsException");
+            }
+            catch (WrongBmpFormatException)
+            {
+                Console.WriteLine(nameof(WrongBmpFormatException));
+            }
+        });
+
+        return rootCommand;
+    }
+
+    public static RootCommand MakeGetBmpListCommand(Dictionary<string, IBitmap> bitmaps)
+    {
+        var rootCommand = new RootCommand("Get names in pool");
+        rootCommand.Handler = CommandHandler.Create(() =>
+        {
+            if (bitmaps.Keys.Count is 0)
+            {
+                Console.WriteLine("Pool is empty");
+            }
+            else
+            {
+                Console.WriteLine("Bmps in pool:");
+                foreach (var commandName in bitmaps.Keys)
+                    Console.WriteLine($"  {commandName}");
+            }
+        });
+
+        return rootCommand;
+    }
+
+    public static RootCommand MakeGetPixelColorCommand(Dictionary<string, IBitmap> bitmaps)
+    {
+        var rootCommand = new RootCommand("Delete bmp from pool")
+        {
+            new Option<string>(new[] { "-n","--bmp-name"}, "Name in image pool") { IsRequired = true},
+            new Option<string>(new[] { "-w","--width"}, "Width") { IsRequired = true},
+            new Option<string>(new[] { "-h","--height"}, "Height") { IsRequired = true},
+        };
+        rootCommand.Handler = CommandHandler.Create<string, int, int>((bmpName, width, height) =>
+        {
+            try
+            {
+                Console.WriteLine(bitmaps[bmpName] is IBitmapWithoutPalette bitmapWithoutPalette ?
+                $"b:{bitmapWithoutPalette[width, height].Blue} g:{bitmapWithoutPalette[width, height].Green} r:{bitmapWithoutPalette[width, height].Red}" :
+                nameof(NotSupportedException));
+            }
+            catch (IndexOutOfRangeException)
+            {
+                Console.WriteLine(nameof(IndexOutOfRangeException));
+            }
+        });
+
+        return rootCommand;
+    }
+
+    public static RootCommand MakeInversColorsCommand(Dictionary<string, IBitmap> bitmaps)
+    {
+        var rootCommand = new RootCommand("Delete bmp from pool")
+            {
+                new Option<string>(new[] { "-n","--bmp-name"}, "Name in image pool") { IsRequired = true},
+            };
+        rootCommand.Handler = CommandHandler.Create<string>(bmpName =>
+        {
+            try
+            {
+                bitmaps[bmpName].InversColors();
+            }
+            catch (FileNotFoundException)
+            {
+                Console.WriteLine(nameof(KeyNotFoundException));
+            }
+        });
+
+        return rootCommand;
+    }
+
+    public static RootCommand MakeMirrorCommand(Dictionary<string, IBitmap> bitmaps)
+    {
+        var rootCommand = new RootCommand("Mirror the image")
+            {
+                new Option<string>(new[] { "-n","--bmp-name"}, "Name in image pool") { IsRequired = true},
+                new Option<AxisMirror>(new[] { "-a","--axis"}, "Rotation direction") { IsRequired = true},
+            };
+        rootCommand.Handler = CommandHandler.Create<string, AxisMirror>((bmpName, axis) =>
+        {
+            try
+            {
+                switch (axis)
+                {
+                    case AxisMirror.Vertical:
+                        bitmaps[bmpName].VerticalMirror();
+                        break;
+
+                    case AxisMirror.Horizontal:
+                        bitmaps[bmpName].HorizontalMirror();
+                        break;
+                }
+            }
+            catch (KeyNotFoundException)
+            {
+                Console.WriteLine(nameof(KeyNotFoundException));
+            }
+        });
+
+        return rootCommand;
+    }
+
+    public static RootCommand MakeReadCommand(Dictionary<string, IBitmap> bitmaps)
+    {
+        var rootCommand = new RootCommand("Read bmp from file")
+            {
+                new Option<string>(new[] { "-n","--bmp-name"}, "The name that is assigned when creating the BMP") { IsRequired = true},
+                new Option<string>(new[] { "-p","--file-path"}, "File path") { IsRequired = true},
+            };
+        rootCommand.Handler = CommandHandler.Create<string, string>((bmpName, filePath) =>
+        {
+            try
+            {
+                bitmaps.Add(bmpName, BitmapFactory.ReadBmpFromFile(filePath).bitmap);
+            }
+            catch (FileNotFoundException)
+            {
+                Console.WriteLine(nameof(FileNotFoundException));
+            }
+            catch (ArgumentException)
+            {
+                Console.WriteLine("KeyAlreadyExistsException");
+            }
+        });
+
+        return rootCommand;
+    }
+
+    public static RootCommand MakeRotateCommand(Dictionary<string, IBitmap> bitmaps)
+    {
+        var rootCommand = new RootCommand("Mirror the image")
+            {
+                new Option<string>(new[] { "-n","--bmp-name"}, "Name in image pool") { IsRequired = true},
+                new Option<RotationDirection>(new[] { "-d","--direction"}, "Rotation direction and angle") { IsRequired = true},
+            };
+        rootCommand.Handler = CommandHandler.Create<string, RotationDirection>((bmpName, direction) =>
+        {
+            try
+            {
+                switch (direction)
+                {
+                    case RotationDirection.Left90:
+                        bitmaps[bmpName].RotateLeft90();
+                        break;
+
+                    case RotationDirection.Right90:
+                        bitmaps[bmpName].RotateRight90();
+                        break;
+
+                    case RotationDirection.Rotate180:
+                        bitmaps[bmpName].Rotate180();
+                        break;
+                }
+            }
+            catch (KeyNotFoundException)
+            {
+                Console.WriteLine(nameof(KeyNotFoundException));
+            }
+        });
+
+        return rootCommand;
+    }
+
+    public static RootCommand MakeSaveCommand(Dictionary<string, IBitmap> bitmaps)
+    {
+        var rootCommand = new RootCommand("Save bmp to file")
+            {
+                new Option<string>(new[] { "-n","--bmp-name"}, "Name in image pool") { IsRequired = true},
+                new Option<string>(new[] { "-p","--file-path"}, "File path") { IsRequired = true},
+            };
+        rootCommand.Handler = CommandHandler.Create<string, string>((bmpName, filePath) =>
+        {
+            try
+            {
+                BitmapFactory.WriteBmp(filePath, bitmaps[bmpName]);
+            }
+            catch (KeyNotFoundException)
+            {
+                Console.WriteLine(nameof(KeyNotFoundException));
+            }
+        });
+
+        return rootCommand;
+    }
+
+    public static RootCommand MakeSetPixelColorCommand(Dictionary<string, IBitmap> bitmaps)
+    {
+        var rootCommand = new RootCommand("Delete bmp from pool")
+            {
+                new Option<string>(new[] { "-n","--bmp-name"}, "Name in image pool") { IsRequired = true},
+                new Option<int>(new[] { "-w","--width"}, "Width") { IsRequired = true},
+                new Option<int>(new[] { "-h","--height"}, "Height") { IsRequired = true},
+                new Option<byte>(new[] { "-b","--blue"}, "Blue component value") { IsRequired = true },
+                new Option<byte>(new[] { "-g","--green"}, "Green component value") { IsRequired = true },
+                new Option<byte>(new[] { "-r","--red"}, "Red component value") { IsRequired = true },
+            };
+        rootCommand.Handler = CommandHandler.Create<string, int, int, byte, byte, byte>((bmpName, width, height, b, g, r) =>
+        {
+            try
+            {
+                if (bitmaps[bmpName] is IBitmapWithoutPalette bitmapWithoutPalette)
+                {
+                    var pixel = bitmapWithoutPalette[width, height];
+                    (pixel.Blue, pixel.Green, pixel.Red) = (b, g, r);
+                    bitmapWithoutPalette[width, height] = pixel;
+                }
+                else
+                    Console.WriteLine(nameof(NotSupportedException));
+            }
+            catch (IndexOutOfRangeException)
+            {
+                Console.WriteLine(nameof(IndexOutOfRangeException));
+            }
+            catch (ColorValueOutOfRangeException)
+            {
+                Console.WriteLine(nameof(ColorValueOutOfRangeException));
+            }
+            catch (KeyNotFoundException)
+            {
+                Console.WriteLine(nameof(KeyNotFoundException));
+            }
+        });
+
+        return rootCommand;
+    }
+
+    public static RootCommand MakeUnloadCommand(Dictionary<string, IBitmap> bitmaps)
+    {
+        var rootCommand = new RootCommand("Delete bmp from pool")
+            {
+                new Option<string>(new[] { "-n","--bmp-name"}, "Name in image pool") { IsRequired = true},
+            };
+        rootCommand.Handler = CommandHandler.Create<string>(bmpName =>
+        {
+            try
+            {
+                bitmaps.Remove(bmpName);
+            }
+            catch (KeyNotFoundException)
+            {
+                Console.WriteLine(nameof(KeyNotFoundException));
+            }
+        });
+
+        return rootCommand;
     }
 }
 
-public static class Interpreter
+public class Interpreter
 {
-    private static readonly Dictionary<string, IBitmap> _bitmaps;
+    private static Lazy<Interpreter> _defaultInterpreter;
+    private readonly Dictionary<string, IBitmap> _bitmaps;
 
-    public static Dictionary<string, IBitmap> Bitmaps => _bitmaps;
+    private readonly Dictionary<string, RootCommand> _commands;
+
+    public static Interpreter DefaultInterpreter => _defaultInterpreter.Value;
+    public IReadOnlyDictionary<string, IBitmap> Bitmaps => _bitmaps;
 
     static Interpreter()
     {
-        _bitmaps = new Dictionary<string, IBitmap>();
+        _defaultInterpreter = new(static () => new
+        (
+            ("create", CommandFactory.MakeCreateBmpCommand),
+            ("read", CommandFactory.MakeReadCommand),
+            ("save", CommandFactory.MakeSaveCommand),
+            ("rotate", CommandFactory.MakeRotateCommand),
+            ("mirror", CommandFactory.MakeMirrorCommand),
+            ("bmpList", CommandFactory.MakeGetBmpListCommand),
+            ("unload", CommandFactory.MakeUnloadCommand),
+            ("inversColors", CommandFactory.MakeInversColorsCommand),
+            ("setPixelColor", CommandFactory.MakeSetPixelColorCommand),
+            ("getPixelColor", CommandFactory.MakeGetPixelColorCommand))
+        );
     }
-}
 
-[AttributeUsage(AttributeTargets.Field)]
-public class CommandParamNameAttribute : Attribute
-{
-    public string Name { get; set; }
-
-    public CommandParamNameAttribute(string name) => Name = name ?? throw new ArgumentNullException(nameof(name));
-}
-
-public class CreateBmpCommand : ICommand
-{
-    private int _bitsPerPixel;
-    private int _colorUsedParm;
-    private int _height;
-    private string _name;
-    private Pixel32[] _palette;
-    private int _width;
-    private int _xPixelsPerMeter;
-    private int _yPixelsPerMeter;
-
-    public void Execute()
+    public Interpreter(params (string name, RootCommand rootCommand)[] commands)
     {
-        IBitmap bitmap = (IBitmap)(Activator.CreateInstance(typeof(BitmapWithoutPalette<>).MakeGenericType(
-           _bitsPerPixel switch
-           {
-               16 when Convert.ToInt32(_colorUsedParm) is 32768 => typeof(Pixel16FiveFiveFive),
-               16 when Convert.ToInt32(_colorUsedParm) is 65536 => typeof(Pixel16FiveSixFive),
-               24 => typeof(Pixel24),
-               32 => typeof(Pixel32),
-               _ => throw new NotImplementedException(),
-           }), _width, _height, _palette, _xPixelsPerMeter, _yPixelsPerMeter) ?? throw new Exception());
-        Interpreter.Bitmaps.Add(_name, bitmap);
+        _bitmaps = new();
+        _commands = new(commands.Length);
+
+        foreach (var (name, rootCommand) in commands)
+            RegisterCommand(name, rootCommand);
     }
 
-    //public bool TryParse(Dictionary<string, string> args)
-    //{
-    //    const string bitsPerPixelParm = "-bits";
-    //    const string colorUsedParm = "-colors";
-    //    const string heightParm = "-height";
-    //    const string nameParm = "-name";
-    //    const string paletteParm = "-palette";
-    //    const string widthParm = "-width";
+    public Interpreter(params (string name, Func<Dictionary<string, IBitmap>, RootCommand> rootCommandGenerator)[] fabricators)
+    {
+        _bitmaps = new();
+        _commands = new(fabricators.Length);
 
-    //    _bitsPerPixel = args[bitsPerPixelParm;
-    //    _colorUsedParm;
-    //    _height;
-    //    _name;
-    //    _palette;
-    //    _width;
-    //    _xPixelsPerMeter;
-    //    _yPixelsPerMeter;
-    //}
-}
+        foreach (var (name, rootCommandGenerator) in fabricators)
+            RegisterCommand(name, rootCommandGenerator(_bitmaps));
+    }
 
-public class LoadBmpFromFileCommand : ICommand
-{
-    private string _name;
-    private string _path;
+    public void RegisterCommand(string name, RootCommand rootCommand) => _commands.Add(name, rootCommand);
 
-    public void Execute() => Interpreter.Bitmaps.Add(_name, BitmapFactory.ReadBmpFromFile(_path).bitmap);
-
-    //public bool TryParse(Dictionary<string, string> args)
-    //{
-    //    const string bmpNameParm = "-name";
-    //    const string pathNameParm = "-path";
-
-    //    _name = args[bmpNameParm];
-    //    _path = args[pathNameParm];
-
-    //    return true;
-    //}
-}
-
-public class SaveBmpToFileCommand : ICommand
-{
-    private string _name;
-    private string _path;
-
-    public void Execute() => BitmapFactory.WriteBmp(_path, Interpreter.Bitmaps[_name]);
-
-    //public bool TryParse(Dictionary<string, string> args)
-    //{
-    //    const string bmpNameParm = "-name";
-    //    const string pathNameParm = "-path";
-
-    //    _name = args[bmpNameParm];
-    //    _path = args[pathNameParm];
-
-    //    return true;
-    //}
-}
-
-public class UnloadBmpFromPull : ICommand
-{
-    private const string bmpNameParm = "-name";
-    private string _name;
-
-    public void Execute() => Interpreter.Bitmaps.Remove(_name);
-
-    //public bool TryParse(Dictionary<string, string> args)
-    //{
-    //    const string bmpNameParm = "-name";
-    //    _name = args[bmpNameParm];
-
-    //    return true;
-    //}
+    public void Run()
+    {
+        while (true)
+        {
+            var strs = Console.ReadLine()?.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (strs != null && strs.Length > 0 && _commands.TryGetValue(strs[0], out var command))
+            {
+                if (command.Invoke(strs.Length >= 2 ? strs[1] : string.Empty) is 0)
+                    Console.WriteLine();
+            }
+            else
+            {
+                Console.WriteLine("Commands:");
+                foreach (var commandName in _commands.Keys)
+                    Console.WriteLine($"  {commandName}");
+                Console.WriteLine();
+            }
+        }
+    }
 }
 
 #endregion Interpreter
