@@ -1,5 +1,6 @@
 ﻿using System.CommandLine;
 using System.CommandLine.Invocation;
+using System.Threading.Tasks;
 
 namespace SimpleBmpUtil
 {
@@ -20,9 +21,9 @@ namespace SimpleBmpUtil
             Rotate180 = 2,
         }
 
-        public static unsafe RootCommand MakeCreateBmpCommand(Dictionary<string, IBitmap> bitmaps)
+        public static unsafe Command MakeCreateBmpCommand(Dictionary<string, IBitmap> bitmaps)
         {
-            RootCommand rootCommand = new("Create bmp in pool")
+            Command command = new("create", "Create bmp in pool")
             {
                 new Option<string>(new[] { "-n", "--bmp-name" }, "Name in image pool") { IsRequired = true },
                 new Option<ushort>(new[] { "-b", "--bits-per-pixel" }, "Bits per pixel in data array") { IsRequired = true },
@@ -34,7 +35,7 @@ namespace SimpleBmpUtil
                 new Option<uint[]>(new[] { "-p", "--palette" }, "Palette"),
             };
 
-            rootCommand.Handler = CommandHandler.Create<string, ushort, uint, int, int, int, int, uint[]>((bmpName, bitsPerPixel, colorsUsed, width, height, xPixelsPerMeter, yPixelsPerMeter, palette) =>
+            command.Handler = CommandHandler.Create<string, ushort, uint, int, int, int, int, uint[]>((bmpName, bitsPerPixel, colorsUsed, width, height, xPixelsPerMeter, yPixelsPerMeter, palette) =>
             {
                 try
                 {
@@ -71,12 +72,12 @@ namespace SimpleBmpUtil
                 }
             });
 
-            return rootCommand;
+            return command;
         }
 
-        public static RootCommand MakeGetBmpListCommand(Dictionary<string, IBitmap> bitmaps)
+        public static Command MakeGetBmpListCommand(Dictionary<string, IBitmap> bitmaps)
         {
-            RootCommand rootCommand = new("Get names in pool")
+            Command command = new("bmpList", "Get names in pool")
             {
                 Handler = CommandHandler.Create(() =>
                 {
@@ -93,19 +94,19 @@ namespace SimpleBmpUtil
                 })
             };
 
-            return rootCommand;
+            return command;
         }
 
-        public static RootCommand MakeGetPixelColorCommand(Dictionary<string, IBitmap> bitmaps)
+        public static Command MakeGetPixelColorCommand(Dictionary<string, IBitmap> bitmaps)
         {
-            RootCommand rootCommand = new("Delete bmp from pool")
+            Command command = new("getPixelColor", "Get pixel color")
             {
                 new Option<string>(new[] { "-n", "--bmp-name" }, "Name in image pool") { IsRequired = true },
                 new Option<string>(new[] { "-w", "--width" }, "Width") { IsRequired = true },
                 new Option<string>(new[] { "-h", "--height" }, "Height") { IsRequired = true },
             };
 
-            rootCommand.Handler = CommandHandler.Create<string, int, int>((bmpName, width, height) =>
+            command.Handler = CommandHandler.Create<string, int, int>((bmpName, width, height) =>
             {
                 try
                 {
@@ -123,17 +124,17 @@ namespace SimpleBmpUtil
                 }
             });
 
-            return rootCommand;
+            return command;
         }
 
-        public static RootCommand MakeInversColorsCommand(Dictionary<string, IBitmap> bitmaps)
+        public static Command MakeInversColorsCommand(Dictionary<string, IBitmap> bitmaps)
         {
-            RootCommand rootCommand = new("Delete bmp from pool")
+            Command command = new("inversColors", "Invers colors")
             {
                 new Option<string>(new[] { "-n", "--bmp-name" }, "Name in image pool") { IsRequired = true },
             };
 
-            rootCommand.Handler = CommandHandler.Create<string>(bmpName =>
+            command.Handler = CommandHandler.Create<string>(bmpName =>
             {
                 try
                 {
@@ -145,18 +146,18 @@ namespace SimpleBmpUtil
                 }
             });
 
-            return rootCommand;
+            return command;
         }
 
-        public static RootCommand MakeMirrorCommand(Dictionary<string, IBitmap> bitmaps)
+        public static Command MakeMirrorCommand(Dictionary<string, IBitmap> bitmaps)
         {
-            RootCommand rootCommand = new("Mirror the image")
+            Command command = new("mirror", "Mirror the image")
             {
                 new Option<string>(new[] { "-n", "--bmp-name" }, "Name in image pool") { IsRequired = true },
                 new Option<AxisMirror>(new[] { "-a", "--axis" }, "Rotation direction") { IsRequired = true },
             };
 
-            rootCommand.Handler = CommandHandler.Create<string, AxisMirror>((bmpName, axis) =>
+            command.Handler = CommandHandler.Create<string, AxisMirror>((bmpName, axis) =>
             {
                 try
                 {
@@ -177,18 +178,18 @@ namespace SimpleBmpUtil
                 }
             });
 
-            return rootCommand;
+            return command;
         }
 
-        public static RootCommand MakeReadCommand(Dictionary<string, IBitmap> bitmaps)
+        public static Command MakeReadCommand(Dictionary<string, IBitmap> bitmaps)
         {
-            RootCommand rootCommand = new("Read bmp from file")
+            Command command = new("read", "Read bmp from file")
             {
                 new Option<string>(new[] { "-n", "--bmp-name" }, "The name that is assigned when creating the BMP") { IsRequired = true },
                 new Option<string>(new[] { "-p", "--file-path" }, "File path") { IsRequired = true },
             };
 
-            rootCommand.Handler = CommandHandler.Create<string, string>((bmpName, filePath) =>
+            command.Handler = CommandHandler.Create<string, string>((bmpName, filePath) =>
             {
                 try
                 {
@@ -204,18 +205,18 @@ namespace SimpleBmpUtil
                 }
             });
 
-            return rootCommand;
+            return command;
         }
 
-        public static RootCommand MakeRotateCommand(Dictionary<string, IBitmap> bitmaps)
+        public static Command MakeRotateCommand(Dictionary<string, IBitmap> bitmaps)
         {
-            RootCommand rootCommand = new("Mirror the image")
+            Command command = new("rotate", "Rotate the image")
             {
                 new Option<string>(new[] { "-n", "--bmp-name" }, "Name in image pool") { IsRequired = true },
                 new Option<RotationDirection>(new[] { "-d", "--direction" }, "Rotation direction and angle") { IsRequired = true },
             };
 
-            rootCommand.Handler = CommandHandler.Create<string, RotationDirection>((bmpName, direction) =>
+            command.Handler = CommandHandler.Create<string, RotationDirection>((bmpName, direction) =>
             {
                 try
                 {
@@ -240,18 +241,18 @@ namespace SimpleBmpUtil
                 }
             });
 
-            return rootCommand;
+            return command;
         }
 
-        public static RootCommand MakeSaveCommand(Dictionary<string, IBitmap> bitmaps)
+        public static Command MakeSaveCommand(Dictionary<string, IBitmap> bitmaps)
         {
-            RootCommand rootCommand = new("Save bmp to file")
+            Command command = new("save", "Save bmp to file")
             {
                 new Option<string>(new[] { "-n", "--bmp-name" }, "Name in image pool") { IsRequired = true },
                 new Option<string>(new[] { "-p", "--file-path" }, "File path") { IsRequired = true },
             };
 
-            rootCommand.Handler = CommandHandler.Create<string, string>((bmpName, filePath) =>
+            command.Handler = CommandHandler.Create<string, string>((bmpName, filePath) =>
             {
                 try
                 {
@@ -263,12 +264,12 @@ namespace SimpleBmpUtil
                 }
             });
 
-            return rootCommand;
+            return command;
         }
 
-        public static RootCommand MakeSetPixelColorCommand(Dictionary<string, IBitmap> bitmaps)
+        public static Command MakeSetPixelColorCommand(Dictionary<string, IBitmap> bitmaps)
         {
-            RootCommand rootCommand = new("Delete bmp from pool")
+            Command command = new("setPixelColor", "Set pixel color")
             {
                 new Option<string>(new[] { "-n", "--bmp-name" }, "Name in image pool") { IsRequired = true },
                 new Option<int>(new[] { "-w", "--width" }, "Width") { IsRequired = true },
@@ -278,7 +279,7 @@ namespace SimpleBmpUtil
                 new Option<byte>(new[] { "-r", "--red" }, "Red component value") { IsRequired = true },
             };
 
-            rootCommand.Handler = CommandHandler.Create<string, int, int, byte, byte, byte>((bmpName, width, height, b, g, r) =>
+            command.Handler = CommandHandler.Create<string, int, int, byte, byte, byte>((bmpName, width, height, b, g, r) =>
             {
                 try
                 {
@@ -307,17 +308,17 @@ namespace SimpleBmpUtil
                 }
             });
 
-            return rootCommand;
+            return command;
         }
 
-        public static RootCommand MakeUnloadCommand(Dictionary<string, IBitmap> bitmaps)
+        public static Command MakeUnloadCommand(Dictionary<string, IBitmap> bitmaps)
         {
-            RootCommand rootCommand = new("Delete bmp from pool")
+            Command command = new("unload", "Delete bmp from pool")
             {
                 new Option<string>(new[] { "-n", "--bmp-name" }, "Name in image pool") { IsRequired = true },
             };
 
-            rootCommand.Handler = CommandHandler.Create<string>(bmpName =>
+            command.Handler = CommandHandler.Create<string>(bmpName =>
             {
                 try
                 {
@@ -329,7 +330,7 @@ namespace SimpleBmpUtil
                 }
             });
 
-            return rootCommand;
+            return command;
         }
     }
 
@@ -337,60 +338,35 @@ namespace SimpleBmpUtil
     {
         private static readonly Lazy<Interpreter> _defaultInterpreter;
         private readonly Dictionary<string, IBitmap> _bitmaps;
-
-        private readonly Dictionary<string, RootCommand> _commands;
-
+        private readonly RootCommand _rootCommand;
         public static Interpreter DefaultInterpreter => _defaultInterpreter.Value;
         public IReadOnlyDictionary<string, IBitmap> Bitmaps => _bitmaps;
 
-        static Interpreter() => _defaultInterpreter = new(static () => new(("create", CommandFactory.MakeCreateBmpCommand),
-                                                                           ("read", CommandFactory.MakeReadCommand),
-                                                                           ("save", CommandFactory.MakeSaveCommand),
-                                                                           ("rotate", CommandFactory.MakeRotateCommand),
-                                                                           ("mirror", CommandFactory.MakeMirrorCommand),
-                                                                           ("bmpList", CommandFactory.MakeGetBmpListCommand),
-                                                                           ("unload", CommandFactory.MakeUnloadCommand),
-                                                                           ("inversColors", CommandFactory.MakeInversColorsCommand),
-                                                                           ("setPixelColor", CommandFactory.MakeSetPixelColorCommand),
-                                                                           ("getPixelColor", CommandFactory.MakeGetPixelColorCommand)));
+        static Interpreter() => _defaultInterpreter = new(static () => new(CommandFactory.MakeCreateBmpCommand,
+                                                                           CommandFactory.MakeReadCommand,
+                                                                           CommandFactory.MakeSaveCommand,
+                                                                           CommandFactory.MakeRotateCommand,
+                                                                           CommandFactory.MakeMirrorCommand,
+                                                                           CommandFactory.MakeGetBmpListCommand,
+                                                                           CommandFactory.MakeUnloadCommand,
+                                                                           CommandFactory.MakeInversColorsCommand,
+                                                                           CommandFactory.MakeSetPixelColorCommand,
+                                                                           CommandFactory.MakeGetPixelColorCommand));
 
-        public Interpreter(params (string name, RootCommand rootCommand)[] commands)
+        public Interpreter(params Func<Dictionary<string, IBitmap>, Command>[] fabricators)
         {
             _bitmaps = new();
-            _commands = new(commands.Length);
+            _rootCommand = new();
 
-            foreach (var (name, rootCommand) in commands)
-                RegisterCommand(name, rootCommand);
+            foreach (var rootCommandGenerator in fabricators)
+                _rootCommand.Add(rootCommandGenerator(_bitmaps));
         }
 
-        public Interpreter(params (string name, Func<Dictionary<string, IBitmap>, RootCommand> rootCommandGenerator)[] fabricators)
-        {
-            _bitmaps = new();
-            _commands = new(fabricators.Length);
-
-            foreach (var (name, rootCommandGenerator) in fabricators)
-                RegisterCommand(name, rootCommandGenerator(_bitmaps));
-        }
-
-        public void RegisterCommand(string name, RootCommand rootCommand) => _commands.Add(name, rootCommand);
-
-        public void Run()
+        public async Task Run()
         {
             while (true)
             {
-                var strs = Console.ReadLine()?.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                if (strs != null && strs.Length > 0 && _commands.TryGetValue(strs[0], out var command))
-                {
-                    if (command.Invoke(strs.Length >= 2 ? strs[1] : string.Empty) is 0)
-                        Console.WriteLine();
-                }
-                else
-                {
-                    Console.WriteLine("Commands:");
-                    foreach (var commandName in _commands.Keys)
-                        Console.WriteLine($"  {commandName}");
-                    Console.WriteLine();
-                }
+                await _rootCommand.InvokeAsync(Console.ReadLine() ?? string.Empty);
             }
         }
     }

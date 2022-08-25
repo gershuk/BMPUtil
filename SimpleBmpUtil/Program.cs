@@ -1,3 +1,3 @@
 ﻿using SimpleBmpUtil;
 
-Interpreter.DefaultInterpreter.Run();
+await Interpreter.DefaultInterpreter.Run();
