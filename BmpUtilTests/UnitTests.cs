@@ -1,13 +1,13 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-using SimpleBmpUtil;
+using SimpleBmpUtil.BaseClasses;
 
 using System;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-using static SimpleBmpUtil.Pixel16;
+using static SimpleBmpUtil.BaseClasses.Pixel16;
 
 namespace BmpUtilTests
 {
@@ -24,7 +24,7 @@ namespace BmpUtilTests
                 };
 
         public static unsafe int LineBitsLength<TPixel>(int width) where TPixel : struct, IPixel =>
-            (width * Marshal.SizeOf<TPixel>() + BytesForLineAlignment<TPixel>(width)) * 8;
+            ((width * Marshal.SizeOf<TPixel>()) + BytesForLineAlignment<TPixel>(width)) * 8;
     }
 
     [TestClass]
@@ -55,9 +55,9 @@ namespace BmpUtilTests
             {
                 for (var i = 0; i < width; ++i)
                 {
-                    Unsafe.Write((byte*)pixelsPtr + i * Marshal.SizeOf<TPixel>(), pixel);
+                    Unsafe.Write((byte*)pixelsPtr + (i * Marshal.SizeOf<TPixel>()), pixel);
                 }
-                pixelsPtr = (byte*)pixelsPtr + Ext.LineBitsLength<TPixel>(width) / 8;
+                pixelsPtr = (byte*)pixelsPtr + (Ext.LineBitsLength<TPixel>(width) / 8);
             }
             handle.Free();
 
@@ -97,8 +97,10 @@ namespace BmpUtilTests
             Assert.AreEqual(bitmapWithoutPalette.LineBitsLength, Ext.LineBitsLength<TPixel>(width));
 
             for (var j = 0; j < height; ++j)
+            {
                 for (var i = 0; i < width; ++i)
                     Assert.AreEqual(bitmapWithoutPalette[i, j], pixel);
+            }
         }
 
         public static void TestHorizontalMirrorGeneric<TPixel>(int width, int height) where TPixel : struct, IPixel
@@ -118,7 +120,7 @@ namespace BmpUtilTests
             {
                 for (var w = 0; w < width; ++w)
                 {
-                    mirroredPixels[h * width + w] = pixels[h * width + width - w - 1];
+                    mirroredPixels[(h * width) + w] = pixels[(h * width) + width - w - 1];
                 }
             }
             BitmapWithoutPalette<TPixel> mirroredBitmapWithoutPalette = new(mirroredPixels, width, height, null, width, height);
@@ -126,8 +128,10 @@ namespace BmpUtilTests
             bitmapWithoutPalette.HorizontalMirror();
 
             for (var j = 0; j < height; ++j)
+            {
                 for (var i = 0; i < width; ++i)
                     Assert.AreEqual(mirroredBitmapWithoutPalette[i, j], bitmapWithoutPalette[i, j]);
+            }
         }
 
         public static void TestIndexersGeneric<TPixel>(int width, int height, byte r, byte g, byte b, int xPixelsPerMeter, int yPixelsPerMeter) where TPixel : struct, IPixel
@@ -137,12 +141,16 @@ namespace BmpUtilTests
             BitmapWithoutPalette<TPixel> bitmapWithoutPalette = new(pixels, width, height, null, xPixelsPerMeter, yPixelsPerMeter);
 
             for (var j = 0; j < height; ++j)
+            {
                 for (var i = 0; i < width; ++i)
                     bitmapWithoutPalette[i, j] = pixel;
+            }
 
             for (var j = 0; j < height; ++j)
+            {
                 for (var i = 0; i < width; ++i)
                     Assert.AreEqual(bitmapWithoutPalette[i, j], pixel);
+            }
         }
 
         public static void TestInterfaceIndexersGeneric<TPixel>(int width, int height, byte r, byte g, byte b, int xPixelsPerMeter, int yPixelsPerMeter) where TPixel : struct, IPixel
@@ -152,12 +160,16 @@ namespace BmpUtilTests
             IBitmapWithoutPalette bitmapWithoutPalette = new BitmapWithoutPalette<TPixel>(pixels, width, height, null, xPixelsPerMeter, yPixelsPerMeter);
 
             for (var j = 0; j < height; ++j)
+            {
                 for (var i = 0; i < width; ++i)
                     bitmapWithoutPalette[i, j] = pixel;
+            }
 
             for (var j = 0; j < height; ++j)
+            {
                 for (var i = 0; i < width; ++i)
                     Assert.AreEqual(bitmapWithoutPalette[i, j], pixel);
+            }
         }
 
         public static void TestInversColorsGeneric<TPixel>(int width, int height, byte r, byte g, byte b, int xPixelsPerMeter, int yPixelsPerMeter) where TPixel : struct, IPixel
@@ -171,8 +183,10 @@ namespace BmpUtilTests
 
             pixel.Invers();
             for (var i = 0; i < width; ++i)
+            {
                 for (var j = 0; j < height; ++j)
                     Assert.AreEqual(bitmapWithoutPalette[i, j], pixel);
+            }
         }
 
         public static void TestMakingInfoHeaderGeneric<TPixel>(int width, int height, byte r, byte g, byte b, int xPixelsPerMeter, int yPixelsPerMeter) where TPixel : struct, IPixel
@@ -184,7 +198,7 @@ namespace BmpUtilTests
             BitmapWithoutPalette<TPixel> bitmapWithoutPalette = new(pixels, width, height, null, xPixelsPerMeter, yPixelsPerMeter);
             var infoHeader = bitmapWithoutPalette.MakeInfoHeader();
 
-            Assert.AreEqual(infoHeader.StructSize, (uint)(Marshal.SizeOf<InfoHeader>() + bitmapWithoutPalette.Palette.Count * Marshal.SizeOf<Pixel32>()));
+            Assert.AreEqual(infoHeader.StructSize, (uint)(Marshal.SizeOf<InfoHeader>() + (bitmapWithoutPalette.Palette.Count * Marshal.SizeOf<Pixel32>())));
             Assert.AreEqual(infoHeader.ImageWidth, width);
             Assert.AreEqual(infoHeader.ImageHeight, height);
             Assert.AreEqual(infoHeader.Planes, 1);
@@ -195,8 +209,8 @@ namespace BmpUtilTests
             Assert.AreEqual(infoHeader.YPixelsPerMeter, yPixelsPerMeter);
             Assert.AreEqual(infoHeader.ColorsUsed, bitmapWithoutPalette switch
             {
-                BitmapWithoutPalette<Pixel16FiveFiveFive> => (uint)32768,
-                BitmapWithoutPalette<Pixel16FiveSixFive> => (uint)65536,
+                BitmapWithoutPalette<Pixel16FiveFiveFive> => 32768,
+                BitmapWithoutPalette<Pixel16FiveSixFive> => 65536,
                 BitmapWithoutPalette<Pixel24> or BitmapWithoutPalette<Pixel32> => (uint)0,
                 _ => throw new NotImplementedException(),
             });
@@ -227,8 +241,10 @@ namespace BmpUtilTests
             Assert.AreEqual(rotatedBitmapWithoutPalette.YPixelsPerMeter, bitmapWithoutPalette.YPixelsPerMeter);
 
             for (var i = 0; i < width; ++i)
+            {
                 for (var j = 0; j < height; ++j)
                     Assert.AreEqual(rotatedBitmapWithoutPalette[i, j], bitmapWithoutPalette[i, j]);
+            }
         }
 
         public static void TestRotateLeft90Generic<TPixel>(int width, int height) where TPixel : struct, IPixel
@@ -247,7 +263,7 @@ namespace BmpUtilTests
             for (var h = 0; h < height; ++h)
             {
                 for (var w = 0; w < width; ++w)
-                    rotatedPixels[h + height * w] = pixels[w + (height - 1 - h) * width];
+                    rotatedPixels[h + (height * w)] = pixels[w + ((height - 1 - h) * width)];
             }
 
             BitmapWithoutPalette<TPixel> bitmapWithoutPalette = new(pixels, width, height, null, width, height);
@@ -260,8 +276,10 @@ namespace BmpUtilTests
             Assert.AreEqual(rotatedBitmapWithoutPalette.YPixelsPerMeter, bitmapWithoutPalette.YPixelsPerMeter);
 
             for (var i = 0; i < width; ++i)
+            {
                 for (var j = 0; j < height; ++j)
                     Assert.AreEqual(rotatedBitmapWithoutPalette[j, i], bitmapWithoutPalette[j, i]);
+            }
         }
 
         public static void TestRotateRight90Generic<TPixel>(int width, int height) where TPixel : struct, IPixel
@@ -280,7 +298,7 @@ namespace BmpUtilTests
             for (var h = 0; h < height; ++h)
             {
                 for (var w = 0; w < width; ++w)
-                    rotatedPixels[h + height * w] = pixels[width - 1 - w + width * h];
+                    rotatedPixels[h + (height * w)] = pixels[width - 1 - w + (width * h)];
             }
 
             BitmapWithoutPalette<TPixel> bitmapWithoutPalette = new(pixels, width, height, null, width, height);
@@ -293,8 +311,10 @@ namespace BmpUtilTests
             Assert.AreEqual(rotatedBitmapWithoutPalette.YPixelsPerMeter, bitmapWithoutPalette.YPixelsPerMeter);
 
             for (var i = 0; i < width; ++i)
+            {
                 for (var j = 0; j < height; ++j)
                     Assert.AreEqual(rotatedBitmapWithoutPalette[j, i], bitmapWithoutPalette[j, i]);
+            }
         }
 
         public static void TestVerticalMirrorGeneric<TPixel>(int width, int height) where TPixel : struct, IPixel
@@ -314,7 +334,7 @@ namespace BmpUtilTests
             {
                 for (var w = 0; w < width; ++w)
                 {
-                    mirroredPixels[h * width + w] = pixels[(height - h - 1) * width + w];
+                    mirroredPixels[(h * width) + w] = pixels[((height - h - 1) * width) + w];
                 }
             }
             BitmapWithoutPalette<TPixel> mirroredBitmapWithoutPalette = new(mirroredPixels, width, height, null, width, height);
@@ -322,8 +342,10 @@ namespace BmpUtilTests
             bitmapWithoutPalette.VerticalMirror();
 
             for (var j = 0; j < height; ++j)
+            {
                 for (var i = 0; i < width; ++i)
                     Assert.AreEqual(mirroredBitmapWithoutPalette[i, j], bitmapWithoutPalette[i, j]);
+            }
         }
 
         [DataTestMethod]
@@ -350,9 +372,9 @@ namespace BmpUtilTests
             {
                 for (var i = 0; i < width; ++i)
                 {
-                    Unsafe.Write((byte*)pixelsPtr + i * Marshal.SizeOf<TPixel>(), pixel);
+                    Unsafe.Write((byte*)pixelsPtr + (i * Marshal.SizeOf<TPixel>()), pixel);
                 }
-                pixelsPtr = (byte*)pixelsPtr + Ext.LineBitsLength<TPixel>(width) / 8;
+                pixelsPtr = (byte*)pixelsPtr + (Ext.LineBitsLength<TPixel>(width) / 8);
             }
             handle.Free();
 
@@ -392,9 +414,9 @@ namespace BmpUtilTests
             {
                 for (var i = 0; i < width; ++i)
                 {
-                    Unsafe.Write((byte*)pixelsPtr + i * Marshal.SizeOf<TPixel>(), pixel);
+                    Unsafe.Write((byte*)pixelsPtr + (i * Marshal.SizeOf<TPixel>()), pixel);
                 }
-                pixelsPtr = (byte*)pixelsPtr + Ext.LineBitsLength<TPixel>(width) / 8;
+                pixelsPtr = (byte*)pixelsPtr + (Ext.LineBitsLength<TPixel>(width) / 8);
             }
             handle.Free();
             BitmapWithoutPalette<TPixel> bitmapWithoutPalette = new(data, width, height, null, xPixelsPerMeter, yPixelsPerMeter);
@@ -407,8 +429,10 @@ namespace BmpUtilTests
             Assert.AreEqual(bitmapWithoutPalette.LineBitsLength, Ext.LineBitsLength<TPixel>(width));
 
             for (var i = 0; i < width; ++i)
+            {
                 for (var j = 0; j < height; ++j)
                     Assert.AreEqual(bitmapWithoutPalette[i, j], pixel);
+            }
         }
 
         [DataTestMethod]
@@ -838,7 +862,7 @@ namespace BmpUtilTests
         public unsafe void TestGetColor(byte b, byte g, byte r)
         {
             Pixel16FiveFiveFive pixel = new();
-            Unsafe.Write(&pixel, b + g * 32 + r * 1024);
+            Unsafe.Write(&pixel, b + (g * 32) + (r * 1024));
 
             Assert.AreEqual(pixel.Blue, b);
             Assert.AreEqual(pixel.Green, g);
@@ -889,7 +913,7 @@ namespace BmpUtilTests
             };
 
             Pixel16FiveFiveFive benchmarkValue = new();
-            Unsafe.Write(&benchmarkValue, b + g * 32 + r * 1024);
+            Unsafe.Write(&benchmarkValue, b + (g * 32) + (r * 1024));
             Assert.AreEqual(benchmarkValue, pixel);
         }
     }
@@ -909,7 +933,7 @@ namespace BmpUtilTests
         public unsafe void TestGetColor(byte b, byte g, byte r)
         {
             Pixel16FiveSixFive pixel = new();
-            Unsafe.Write(&pixel, b + g * 32 + r * 2048);
+            Unsafe.Write(&pixel, b + (g * 32) + (r * 2048));
 
             Assert.AreEqual(pixel.Blue, b);
             Assert.AreEqual(pixel.Green, g);
@@ -960,7 +984,7 @@ namespace BmpUtilTests
             };
 
             Pixel16FiveSixFive benchmarkValue = new();
-            Unsafe.Write(&benchmarkValue, b + g * 32 + r * 2048);
+            Unsafe.Write(&benchmarkValue, b + (g * 32) + (r * 2048));
             Assert.AreEqual(benchmarkValue, pixel);
         }
     }
@@ -988,7 +1012,7 @@ namespace BmpUtilTests
         public unsafe void TestGetColor(byte b, byte g, byte r, Pixel16.SchemeType schemeType)
         {
             Pixel16 pixel = new();
-            Unsafe.Write(&pixel, b + g * 32 + r * 1024 * (schemeType is SchemeType.FiveSixFive ? 2 : 1));
+            Unsafe.Write(&pixel, b + (g * 32) + (r * 1024 * (schemeType is SchemeType.FiveSixFive ? 2 : 1)));
 
             Assert.AreEqual(pixel.GetColorComponent(ComponentId.B, schemeType), b);
             Assert.AreEqual(pixel.GetColorComponent(ComponentId.G, schemeType), g);
@@ -1015,16 +1039,16 @@ namespace BmpUtilTests
         public unsafe void TestInversColor(byte b, byte g, byte r, SchemeType schemeType)
         {
             Pixel16 pixel = new();
-            pixel.SetColorComponent(b, ComponentId.B, schemeType);
-            pixel.SetColorComponent(g, ComponentId.G, schemeType);
-            pixel.SetColorComponent(r, ComponentId.R, schemeType);
+            _ = pixel.SetColorComponent(b, ComponentId.B, schemeType);
+            _ = pixel.SetColorComponent(g, ComponentId.G, schemeType);
+            _ = pixel.SetColorComponent(r, ComponentId.R, schemeType);
 
             pixel.Invers(schemeType);
 
             Pixel16 benchmarkValue = new();
-            benchmarkValue.SetColorComponent((byte)(31 - r), ComponentId.R, schemeType);
-            benchmarkValue.SetColorComponent((byte)((schemeType is SchemeType.FiveFiveFive ? 31 : 63) - g), ComponentId.G, schemeType);
-            benchmarkValue.SetColorComponent((byte)(31 - b), ComponentId.B, schemeType);
+            _ = benchmarkValue.SetColorComponent((byte)(31 - r), ComponentId.R, schemeType);
+            _ = benchmarkValue.SetColorComponent((byte)((schemeType is SchemeType.FiveFiveFive ? 31 : 63) - g), ComponentId.G, schemeType);
+            _ = benchmarkValue.SetColorComponent((byte)(31 - b), ComponentId.B, schemeType);
 
             Assert.AreEqual(benchmarkValue, pixel);
         }
@@ -1085,16 +1109,16 @@ namespace BmpUtilTests
         public unsafe void TestSetColor(byte b, byte g, byte r, Pixel16.SchemeType schemeType)
         {
             Pixel16 pixel = new();
-            pixel.SetColorComponent(b, ComponentId.B, schemeType);
-            pixel.SetColorComponent(g, ComponentId.G, schemeType);
-            pixel.SetColorComponent(r, ComponentId.R, schemeType);
+            _ = pixel.SetColorComponent(b, ComponentId.B, schemeType);
+            _ = pixel.SetColorComponent(g, ComponentId.G, schemeType);
+            _ = pixel.SetColorComponent(r, ComponentId.R, schemeType);
 
             Pixel16 benchmarkValue = new();
-            Unsafe.Write(&benchmarkValue, b + g * 32 + r * schemeType switch
+            Unsafe.Write(&benchmarkValue, b + (g * 32) + (r * schemeType switch
             {
                 SchemeType.FiveFiveFive => 1024,
                 SchemeType.FiveSixFive => 2048,
-            });
+            }));
             Assert.AreEqual(benchmarkValue, pixel);
         }
     }
@@ -1114,7 +1138,7 @@ namespace BmpUtilTests
         public unsafe void TestGetColor(byte b, byte g, byte r)
         {
             Pixel24 pixel = new();
-            Unsafe.Write(&pixel, b + g * 256 + r * 65536);
+            Unsafe.Write(&pixel, b + (g * 256) + (r * 65536));
 
             Assert.AreEqual(pixel.Blue, b);
             Assert.AreEqual(pixel.Green, g);
@@ -1165,7 +1189,7 @@ namespace BmpUtilTests
             };
 
             Pixel24 benchmarkValue = new();
-            Unsafe.Write(&benchmarkValue, b + g * 256 + r * 65536);
+            Unsafe.Write(&benchmarkValue, b + (g * 256) + (r * 65536));
             Assert.AreEqual(benchmarkValue, pixel);
         }
     }
@@ -1185,7 +1209,7 @@ namespace BmpUtilTests
         public unsafe void TestGetColor(byte b, byte g, byte r)
         {
             Pixel32 pixel = new();
-            Unsafe.Write(&pixel, b + g * 256 + r * 65536);
+            Unsafe.Write(&pixel, b + (g * 256) + (r * 65536));
 
             Assert.AreEqual(pixel.Blue, b);
             Assert.AreEqual(pixel.Green, g);
@@ -1238,7 +1262,7 @@ namespace BmpUtilTests
             };
 
             Pixel32 benchmarkValue = new();
-            Unsafe.Write(&benchmarkValue, b + g * 256 + r * 65536);
+            Unsafe.Write(&benchmarkValue, b + (g * 256) + (r * 65536));
             Assert.AreEqual(benchmarkValue, pixel);
         }
     }
@@ -1248,7 +1272,7 @@ namespace BmpUtilTests
     {
         public static void TestReadWriteGeneric<TPixel>(int w, int h) where TPixel : struct, IPixel
         {
-            TPixel[] pixeles = new TPixel[w * h];
+            var pixeles = new TPixel[w * h];
             Random random = new(698);
 
             for (var i = 0; i < pixeles.Length; ++i)
@@ -1265,14 +1289,18 @@ namespace BmpUtilTests
                 || bitmap.XPixelsPerMeter != readedBmp.XPixelsPerMeter
                 || bitmap.YPixelsPerMeter != readedBmp.YPixelsPerMeter
                 || bitmap.GetType() != bitmap.GetType())
+            {
                 throw new Exception();
+            }
 
             for (var i = 0; i < bitmap.Width; ++i)
+            {
                 for (var j = 0; j < bitmap.Height; ++j)
                 {
                     if (!bitmap[i, j].Equals((readedBmp as BitmapWithoutPalette<TPixel>)[i, j]))
                         throw new Exception();
                 }
+            }
 
             File.Delete("test.bmp");
         }
